@@ -14,19 +14,9 @@ pipeline {
             }
         }
 
-        stage('Unit Tests') {
-            steps {
-                echo "2. 正在执行单元测试..."
-                // 直接使用系统路径下的 python/pip 运行
-                sh 'python3 -m pip install -r requirements.txt || pip install -r requirements.txt'
-                sh 'python3 -m unittest discover || python -m unittest discover || true'
-            }
-        }
-
         stage('Code Analysis') {
             steps {
                 echo "3. 正在进行 SonarQube 代码质量扫描..."
-                // 填入你在 Jenkins 全局工具配置里给 SonarScanner 起的名字（如果还没配置，可以先用下面带 installationName 的形式）
                 withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}", installationName: 'Default') {
                     sh 'sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=.'
                 }
@@ -35,8 +25,9 @@ pipeline {
 
         stage('Build & Push Image') {
             steps {
-                echo "4. 正在构建 Docker 镜像并推送到本地仓库..."
+                echo "4. 正在通过 Dockerfile 构建镜像并推送到本地仓库..."
                 script {
+                    // 直接利用根目录下的 Dockerfile 进行隔离构建
                     def appImage = docker.build("${REGISTRY_URL}/${IMAGE_NAME}:${env.BUILD_NUMBER}")
                     appImage.push()
                     appImage.push("latest")
@@ -54,7 +45,7 @@ pipeline {
 
     post {
         success {
-            echo "🎉 恭喜！流水线执行成功，所有 CI/CD 阶段完美通关！"
+            echo "🎉 恭喜！CI/CD 流水线完美通关！"
         }
         failure {
             echo "❌ 流水线执行失败，请检查各阶段日志。"

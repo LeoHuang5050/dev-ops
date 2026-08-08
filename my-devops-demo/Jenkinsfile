@@ -17,7 +17,7 @@ pipeline {
         stage('Code Analysis') {
             steps {
                 echo "3. 正在进行 SonarQube 代码质量扫描..."
-                withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}", installationName: 'Default') {
+                withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}") {
                     sh 'sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=.'
                 }
             }

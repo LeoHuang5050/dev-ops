@@ -1,18 +1,10 @@
 pipeline {
-    // 让整个流水线运行在一个自带 Python 环境的容器中，完美解决 python 找不到的问题
-    agent {
-        docker {
-            image 'python:3.9-slim'
-            args '-u root:root' // 使用 root 权限以便在容器内调用 docker 或安装工具
-        }
-    }
+    agent any
     
     environment {
         IMAGE_NAME = "python-web-app"
         REGISTRY_URL = "localhost:5000"
         SONAR_CREDENTIAL_ID = "sonarqube-token"
-        // 将 SonarScanner 工具链路径加入环境变量（前提是在 Jenkins 全局工具配置里定义了 sonar-scanner）
-        // SCANNER_HOME = tool 'SonarQubeScanner'
     }
 
     stages {
@@ -25,20 +17,18 @@ pipeline {
         stage('Unit Tests') {
             steps {
                 echo "2. 正在执行单元测试..."
-                // 安装依赖并执行测试
-                sh 'pip install -r requirements.txt'
-                sh 'python -m unittest discover || true'
+                // 直接使用系统路径下的 python/pip 运行
+                sh 'python3 -m pip install -r requirements.txt || pip install -r requirements.txt'
+                sh 'python3 -m unittest discover || python -m unittest discover || true'
             }
         }
 
         stage('Code Analysis') {
             steps {
                 echo "3. 正在进行 SonarQube 代码质量扫描..."
-                // 使用我们在 Jenkins 里配置好的凭据与 SonarQube 服务端（localhost:9000）联通
-                withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}") {
-                    // 调用 sonar-scanner 命令行进行源码静态分析
-                    // 注意：如果容器内没有直接装 sonar-scanner 命令行，我们也可以用官方提供的 SonarQube Scanner 插件自带步骤
-                    sh "echo 'Executing SonarQube scan...'"
+                // 填入你在 Jenkins 全局工具配置里给 SonarScanner 起的名字（如果还没配置，可以先用下面带 installationName 的形式）
+                withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}", installationName: 'Default') {
+                    sh 'sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=.'
                 }
             }
         }
@@ -64,7 +54,7 @@ pipeline {
 
     post {
         success {
-            echo "🎉 恭喜！全链路 CI/CD 生产级流水线（测试 + 扫描 + 镜像推送）完美通关！"
+            echo "🎉 恭喜！流水线执行成功，所有 CI/CD 阶段完美通关！"
         }
         failure {
             echo "❌ 流水线执行失败，请检查各阶段日志。"

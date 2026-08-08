@@ -1,45 +1,74 @@
 pipeline {
-    agent any
-    
+    agent none
+
     environment {
         IMAGE_NAME = "python-web-app"
-        REGISTRY_URL = "localhost:5000"
+        // 集群内 Registry Service，不要用 localhost
+        REGISTRY_URL = "docker-registry.cicd.svc.cluster.local:5000"
         SONAR_CREDENTIAL_ID = "sonarqube-token"
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                echo "1. 正在拉取源码..."
-            }
-        }
-
-        stage('Code Analysis') {
-            steps {
-                echo "3. 正在进行 SonarQube 代码质量扫描..."
-                withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}", installationName: 'Default') {
-                    script {
-                        def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=."
+        stage('Checkout & Sonar') {
+            agent any
+            stages {
+                stage('Checkout') {
+                    steps {
+                        echo "1. 正在拉取源码..."
+                    }
+                }
+                stage('Code Analysis') {
+                    steps {
+                        echo "3. 正在进行 SonarQube 代码质量扫描..."
+                        withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}", installationName: 'Default') {
+                            script {
+                                def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                                sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=."
+                            }
+                        }
                     }
                 }
             }
         }
 
-        stage('Build & Push Image') {
+        stage('Build & Push with Kaniko') {
+            agent {
+                kubernetes {
+                    yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+'''
+                    defaultContainer 'kaniko'
+                }
+            }
             steps {
-                echo "4. 正在通过 Dockerfile 构建镜像并推送到本地仓库..."
-                // 不依赖 Docker Pipeline 插件的 docker.* DSL；直接调 docker CLI
-                // 仓库根目录 checkout，Dockerfile 在 my-devops-demo/ 下
-                sh """
-                    docker build -t ${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER} -t ${REGISTRY_URL}/${IMAGE_NAME}:latest -f my-devops-demo/Dockerfile my-devops-demo
-                    docker push ${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER}
-                    docker push ${REGISTRY_URL}/${IMAGE_NAME}:latest
-                """
+                echo "4. 正在使用 Kaniko 构建并推送镜像..."
+                // 换了 agent，需重新拉取代码
+                checkout scm
+                sh '''
+                    /kaniko/executor \
+                      --context=dir://my-devops-demo \
+                      --dockerfile=Dockerfile \
+                      --destination=${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER} \
+                      --destination=${REGISTRY_URL}/${IMAGE_NAME}:latest \
+                      --insecure \
+                      --insecure-registry=${REGISTRY_URL}
+                '''
             }
         }
 
         stage('Deploy to K8s') {
+            agent any
             steps {
                 echo "5. 正在将最新镜像部署到本地 Kubernetes 集群..."
                 echo "K8s 自动化部署指令下发成功！"

@@ -30,6 +30,8 @@ spec:
       labels:
         app: jenkins
     spec:
+      # 使用 jenkins SA，便于 Kubernetes 插件同集群调度 Agent / Kaniko Pod
+      serviceAccountName: jenkins
       containers:
         - name: jenkins
           image: jenkins/jenkins:lts

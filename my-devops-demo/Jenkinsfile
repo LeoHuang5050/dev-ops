@@ -18,7 +18,11 @@ pipeline {
             steps {
                 echo "3. 正在进行 SonarQube 代码质量扫描..."
                 withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}", installationName: 'Default') {
-                    sh 'sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=.'
+                    script {
+                        // 动态获取你在全局工具配置里定义的 sonar-scanner 路径并执行
+                        def scannerHome = tool 'Default';
+                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=."
+                    }
                 }
             }
         }

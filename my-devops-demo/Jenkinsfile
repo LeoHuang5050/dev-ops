@@ -29,12 +29,13 @@ pipeline {
         stage('Build & Push Image') {
             steps {
                 echo "4. 正在通过 Dockerfile 构建镜像并推送到本地仓库..."
-                script {
-                    // 直接利用根目录下的 Dockerfile 进行隔离构建
-                    def appImage = docker.build("${REGISTRY_URL}/${IMAGE_NAME}:${env.BUILD_NUMBER}")
-                    appImage.push()
-                    appImage.push("latest")
-                }
+                // 不依赖 Docker Pipeline 插件的 docker.* DSL；直接调 docker CLI
+                // 仓库根目录 checkout，Dockerfile 在 my-devops-demo/ 下
+                sh """
+                    docker build -t ${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER} -t ${REGISTRY_URL}/${IMAGE_NAME}:latest -f my-devops-demo/Dockerfile my-devops-demo
+                    docker push ${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER}
+                    docker push ${REGISTRY_URL}/${IMAGE_NAME}:latest
+                """
             }
         }
 

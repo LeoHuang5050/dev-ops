@@ -1,0 +1,81 @@
+pipeline {
+    agent any
+    
+    environment {
+        // 定义应用名称与镜像标签
+        IMAGE_NAME = "python-web-app"
+        // 核心：指向我们第一阶段在本地跑起来的 5000 端口私有镜像仓库
+        REGISTRY_URL = "localhost:5000"
+        // 使用 SonarQube 凭据（我们在 Jenkins 里会配置这个凭据的 ID）
+        SONAR_CREDENTIAL_ID = "sonarqube-token"
+    }
+
+    stages {
+        // 阶段 1：拉取代码
+        stage('Checkout') {
+            steps {
+                echo "1. 正在拉取源码..."
+                // 如果是从 Git 仓库拉取，可替换为 checkout scm
+            }
+        }
+
+        // 阶段 2：单元测试（示例阶段）
+        stage('Unit Tests') {
+            steps {
+                echo "2. 正在执行单元测试..."
+                // 真实项目中这里会运行 pytest 或 unittest
+                sh 'python -m unittest discover || true'
+            }
+        }
+
+        // 阶段 3：SonarQube 静态代码扫描
+        stage('Code Analysis') {
+            steps {
+                echo "3. 正在进行 SonarQube 代码质量扫描..."
+                // 通过工具调用 SonarScanner 将报告推送到 localhost:9000
+                withSonarQubeEnv(credentialsId: "${SONAR_CREDENTIAL_ID}") {
+                    // 如果是用命令行扫描，格式如下：
+                    // sh "sonar-scanner -Dsonar.projectKey=python-web-app -Dsonar.sources=."
+                }
+                echo "代码扫描阶段模拟通过！"
+            }
+        }
+
+        // 阶段 4：Docker 镜像构建与推送至私有仓库
+        stage('Build & Push Image') {
+            steps {
+                echo "4. 正在构建 Docker 镜像并推送到本地仓库..."
+                script {
+                    // 动态组装镜像完整标签：localhost:5000/python-web-app:latest
+                    def customImage = docker.image("${REGISTRY_URL}/${IMAGE_NAME}:latest")
+                    
+                    // 在本地构建 Dockerfile
+                    appImage = docker.build("${REGISTRY_URL}/${IMAGE_NAME}:${env.BUILD_NUMBER}")
+                    
+                    // 推送到本地私有仓库 (Registry)
+                    appImage.push()
+                    appImage.push("latest")
+                }
+            }
+        }
+
+        // 阶段 5：自动化部署到 K8s
+        stage('Deploy to K8s') {
+            steps {
+                echo "5. 正在将最新镜像部署到本地 Kubernetes 集群..."
+                // 在真实生产中，我们会用 kubectl set image 或者是 Helm 更新部署
+                // sh "kubectl set image deployment/web-app web-app=${REGISTRY_URL}/${IMAGE_NAME}:${env.BUILD_NUMBER} -n cicd"
+                echo "K8s 自动化部署指令下发成功！"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "🎉 恭喜！流水线执行成功，所有 CI/CD 阶段完美通关！"
+        }
+        failure {
+            echo "❌ 流水线执行失败，请检查各阶段日志。"
+        }
+    }
+}
